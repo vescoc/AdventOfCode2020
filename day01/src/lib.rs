@@ -4,31 +4,32 @@ extern crate test;
 #[macro_use]
 extern crate lazy_static;
 
-const RANGE: u32 = 2020;
+mod bit_set;
+
+const RANGE: usize = 2020;
 
 lazy_static! {
-    static ref INPUT: Vec<u32> = include_str!("../input")
+    static ref INPUT: Vec<usize> = include_str!("../input")
         .lines()
         .map(|l| l.parse().unwrap())
         .collect();
 }
 
-fn solve_1(input: &[u32]) -> u32 {
-    let mut set = Vec::<u8>::with_capacity(input.len());
-    set.resize(RANGE as usize, 0);
+fn solve_1(input: &[usize]) -> usize {
+    let mut set = bit_set::BitSet::new(RANGE);
 
     for &i in input {
         let d = RANGE - i;
-        if set[d as usize] == 1 {
+        if set.get(d) {
             return d * i;
         }
-        set[i as usize] = 1;
+        set.set(i, true);
     }
 
     panic!("not found");
 }
 
-fn solve_2(input: &[u32]) -> u32 {
+fn solve_2(input: &[usize]) -> usize {
     for i in 0..input.len() - 2 {
         for j in i + 1..input.len() - 1 {
             let s = input[i] + input[j];
@@ -46,11 +47,11 @@ fn solve_2(input: &[u32]) -> u32 {
     panic!("not found")
 }
 
-pub fn part_1() -> u32 {
+pub fn part_1() -> usize {
     solve_1(&INPUT)
 }
 
-pub fn part_2() -> u32 {
+pub fn part_2() -> usize {
     solve_2(&INPUT)
 }
 
@@ -59,7 +60,7 @@ mod tests {
     use super::*;
     use test::Bencher;
 
-    static INPUT: [u32; 6] = [1721, 979, 366, 299, 675, 1456];
+    static INPUT: [usize; 6] = [1721, 979, 366, 299, 675, 1456];
 
     #[test]
     fn same_results_1() {
