@@ -13,5 +13,5 @@ fn main() {
         "elapsed: {}ms ({}ns)",
         elapsed.as_millis(),
         elapsed.as_nanos(),
-    )
+    );
 }
