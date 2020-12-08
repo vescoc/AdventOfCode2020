@@ -4,7 +4,7 @@ extern crate test;
 #[macro_use]
 extern crate lazy_static;
 
-use std::{collections::HashSet, hash::Hash, iter::FromIterator, std::ops::Deref};
+use std::{collections::HashSet, hash::Hash, iter::FromIterator, ops::Deref};
 
 lazy_static! {
     static ref INPUT: Vec<&'static str> = include_str!("../input").split("\n\n").collect();
