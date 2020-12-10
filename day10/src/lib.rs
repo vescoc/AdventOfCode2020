@@ -34,7 +34,7 @@ fn solve_1(input: &[u32]) -> [u32; 3] {
     [a + 1, b, c + 1]
 }
 
-fn solve_2_r(adapters: &[u32], removed: HashSet<usize>) -> usize {
+fn solve_2_r(adapters: &[u32], removed: HashSet<usize>) -> u128 {
     let filtered = || {
         adapters
             .iter()
@@ -55,12 +55,12 @@ fn solve_2_r(adapters: &[u32], removed: HashSet<usize>) -> usize {
                     removed.iter().cloned().chain(std::iter::once(i)).collect(),
                 )
             })
-            .sum::<usize>()
+            .sum::<u128>()
             + 1
     }
 }
 
-fn solve_2(input: &[u32]) -> usize {
+fn solve_2(input: &[u32]) -> u128 {
     let mut adapters = input
         .iter()
         .copied()
@@ -89,7 +89,7 @@ pub fn part_1() -> u32 {
     r[0] * r[2]
 }
 
-pub fn part_2() -> usize {
+pub fn part_2() -> u128 {
     solve_2(&INPUT)
 }
 
