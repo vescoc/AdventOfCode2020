@@ -4,10 +4,10 @@ extern crate test;
 #[macro_use]
 extern crate lazy_static;
 
-#[cfg(not_optimized)]
+#[cfg(not(feature = "optimized"))]
 use std::collections::HashSet;
 
-#[cfg(not(not_optimized))]
+#[cfg(feature = "optimized")]
 use std::collections::HashMap;
 
 lazy_static! {
@@ -139,7 +139,7 @@ fn solve_1(note: &Note) -> u64 {
         .sum()
 }
 
-#[cfg(not_optimized)]
+#[cfg(not(feature = "optimized"))]
 fn solve_2(note: &Note) -> Vec<String> {
     let sets: Vec<HashSet<String>> = std::iter::once(&note.your_ticket)
         .chain(note.nearby_tickets.iter())
@@ -205,7 +205,7 @@ fn solve_2(note: &Note) -> Vec<String> {
         .collect()
 }
 
-#[cfg(not(not_optimized))]
+#[cfg(feature = "optimized")]
 fn solve_2(note: &Note) -> Vec<String> {
     let mut current_id = 1u64;
     let mut name2id = HashMap::with_capacity(64);
