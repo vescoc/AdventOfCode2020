@@ -13,26 +13,8 @@ lazy_static! {
 #[derive(Clone)]
 struct Data<T>(Vec<(HashSet<T>, HashSet<T>)>);
 
-impl Data<String> {
-    #[allow(dead_code)]
-    fn ingredients(&self) -> HashSet<&String> {
-        self.0
-            .iter()
-            .map(|(i, _)| i)
-            .flatten()
-            .collect::<HashSet<_>>()
-    }
-
-    #[allow(dead_code)]
-    fn allergens(&self) -> HashSet<&String> {
-        self.0
-            .iter()
-            .map(|(_, a)| a)
-            .flatten()
-            .collect::<HashSet<_>>()
-    }
-
-    fn reduce(&mut self) -> Option<HashSet<(String, String)>> {
+impl <T: Eq + std::hash::Hash + Clone> Data<T> {
+    fn reduce(&mut self) -> Option<HashSet<(T, T)>> {
         let (mut r_ingredients, mut r_allergens, mut res) =
             (HashSet::new(), HashSet::new(), HashSet::new());
 
@@ -45,8 +27,8 @@ impl Data<String> {
 
                 if ingredients.len() == 1 {
                     res.insert((
-                        ingredients.iter().next().unwrap().to_string(),
-                        allergens.iter().next().unwrap().to_string(),
+                        ingredients.iter().next().unwrap().to_owned(),
+                        allergens.iter().next().unwrap().to_owned(),
                     ));
                 }
             }
@@ -60,13 +42,13 @@ impl Data<String> {
                     let allergens = a_allergens
                         .intersection(b_allergens)
                         .cloned()
-                        .collect::<HashSet<String>>();
+                        .collect::<HashSet<_>>();
                     if !allergens.is_empty() {
                         let ingredients = a_ingredients
                             .intersection(b_ingredients)
                             .cloned()
-                            .collect::<HashSet<String>>();
-                        if !data.contains(&(ingredients.clone(), allergens.clone())) {
+                            .collect::<HashSet<_>>();
+                        if !data.contains(&(ingredients.to_owned(), allergens.to_owned())) {
                             data.push((ingredients, allergens));
                         }
                     }
@@ -75,8 +57,8 @@ impl Data<String> {
 
             if let Some(r) = Data(data).reduce() {
                 r.iter().for_each(|(r_i, r_a)| {
-                    r_ingredients.insert(r_i.to_string());
-                    r_allergens.insert(r_a.to_string());
+                    r_ingredients.insert(r_i.to_owned());
+                    r_allergens.insert(r_a.to_owned());
                 });
                 res = r;
             }
@@ -130,37 +112,28 @@ impl<T> std::ops::Deref for Data<T> {
     }
 }
 
-fn solve_1(input: &Data<String>) -> usize {
+fn solve(input: &Data<String>) -> (usize, String) {
     let mut input = (*input).clone();
-    while let Some(set) = input.reduce() {
-        println!("removed: {:?}", set);
-    }
-
-    input.iter().map(|(i, _)| i).flatten().count()
-}
-
-fn solve_2(input: &Data<String>) -> String {
+    
     let mut v = Vec::new();
-    let mut input = (*input).clone();
     while let Some(set) = input.reduce() {
-        println!("removed: {:?}", set);
         set.iter().cloned().for_each(|s| v.push(s));
     }
 
-    v.sort_by_key(|(_, a)| a.to_string());
-    v.iter()
-        .map(|(i, _)| i)
-        .cloned()
-        .collect::<Vec<_>>()
-        .join(",")
+    v.sort_by_key(|(_, a)| a.to_owned());
+
+    (
+        input.iter().map(|(i, _)| i).flatten().count(),
+        v.iter()
+            .map(|(i, _)| i)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(","),
+    )    
 }
 
-pub fn part_1() -> usize {
-    solve_1(&INPUT)
-}
-
-pub fn part_2() -> String {
-    solve_2(&INPUT)
+pub fn part() -> (usize, String) {
+    solve(&INPUT)
 }
 
 #[cfg(test)]
@@ -179,24 +152,22 @@ sqjhc mxmxvkd sbzzf (contains fish)"
 
     #[test]
     fn same_results_part_1() {
-        assert_eq!(solve_1(&INPUT), 5);
+        assert_eq!(solve(&INPUT).0, 5);
     }
 
     #[test]
-    #[ignore]
     fn same_results_part_2() {
-        todo!();
+        assert_eq!(solve(&INPUT).1, "mxmxvkd,sqjhc,fvjkl");
+    }
+
+    #[bench]
+    fn bench_solve_test(b: &mut Bencher) {
+        b.iter(|| solve(&INPUT));
     }
 
     #[bench]
     #[ignore]
-    fn bench_part_1(b: &mut Bencher) {
-        b.iter(part_1);
-    }
-
-    #[bench]
-    #[ignore]
-    fn bench_part_2(b: &mut Bencher) {
-        b.iter(part_2);
+    fn bench_solve(b: &mut Bencher) {
+        b.iter(part);
     }
 }
