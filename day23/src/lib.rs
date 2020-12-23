@@ -8,122 +8,6 @@ lazy_static! {
     static ref INPUT: [u32; 9] = parse("952438716");
 }
 
-trait CrapCups<T> {
-    fn crap_cups(&self) -> CrapCupsIter<T>;
-}
-
-struct CrapCupsIter<T> {
-    labels: [T; 9],
-    current_cup_index: usize,
-    tmp: [T; 6],
-}
-
-impl CrapCups<u32> for [u32; 9] {
-    fn crap_cups(&self) -> CrapCupsIter<u32> {
-        CrapCupsIter {
-            labels: self.to_owned(),
-            current_cup_index: 0,
-            tmp: [0; 6],
-        }
-    }
-}
-
-impl Iterator for CrapCupsIter<u32> {
-    type Item = CapCupsValue;
-
-    fn next(&mut self) -> Option<CapCupsValue> {
-        let current = self.labels.to_owned();
-
-        let find = |data: &[u32], value| {
-            data.iter()
-                .enumerate()
-                .find_map(|(i, v)| if *v == value { Some(i) } else { None })
-                .unwrap()
-        };
-
-        let current_cup = current[self.current_cup_index];
-
-        let destination_cup = {
-            let mut destination_cup = current_cup - 1;
-            loop {
-                if destination_cup == 0 {
-                    destination_cup = current.len() as u32;
-                }
-
-                if (1..4).any(|i| {
-                    current[(self.current_cup_index + i) % current.len()] == destination_cup
-                }) {
-                    destination_cup =
-                        (destination_cup + current.len() as u32 - 1) % current.len() as u32;
-                } else {
-                    break destination_cup;
-                }
-            }
-        };
-
-        let (mut d, mut c) = (0, 0);
-        for i in 0..current.len() {
-            if (1..4).any(|s| (self.current_cup_index + s) % current.len() == i) {
-                c += 1;
-            } else {
-                self.tmp[d] = current[c];
-                d += 1;
-                c += 1;
-            }
-        }
-
-        let destination_cup_index = find(&self.tmp, destination_cup);
-        let current_cup_index = find(&self.tmp, current_cup);
-
-        let (mut d, mut s) = (self.current_cup_index, current_cup_index);
-        for _ in 0..current.len() - 3 {
-            if s == destination_cup_index {
-                self.labels[d] = self.tmp[s];
-                self.labels[(d + 1) % current.len()] =
-                    current[(self.current_cup_index + 1) % current.len()];
-                self.labels[(d + 2) % current.len()] =
-                    current[(self.current_cup_index + 2) % current.len()];
-                self.labels[(d + 3) % current.len()] =
-                    current[(self.current_cup_index + 3) % current.len()];
-
-                d = (d + 4) % current.len();
-                s = (s + 1) % (current.len() - 3);
-            } else {
-                self.labels[d] = self.tmp[s];
-
-                d = (d + 1) % current.len();
-                s = (s + 1) % (current.len() - 3);
-            }
-        }
-
-        self.current_cup_index = (self.current_cup_index + 1) % current.len();
-
-        Some(CapCupsValue(current))
-    }
-}
-
-struct CapCupsValue([u32; 9]);
-
-impl std::fmt::Debug for CapCupsValue {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_fmt(format_args!("{:?}: {}", self.0, &self.to_string()))
-    }
-}
-
-impl ToString for CapCupsValue {
-    fn to_string(&self) -> String {
-        let index = self
-            .0
-            .iter()
-            .enumerate()
-            .find_map(|(i, v)| if *v == 1 { Some(i) } else { None })
-            .unwrap();
-        (1..9)
-            .map(|i| (self.0[(i + index) % 9] + '0' as u32) as u8 as char)
-            .collect()
-    }
-}
-
 fn parse(input: &str) -> [u32; 9] {
     let mut array = [0; 9];
 
@@ -134,19 +18,95 @@ fn parse(input: &str) -> [u32; 9] {
     array
 }
 
-fn solve_1(labels: &[u32; 9]) -> String {
-    labels.crap_cups().nth(100).unwrap().to_string()
+fn solve(labels: &[u32], len: usize, i: usize) -> (usize, Vec<usize>) {
+    let mut mem = Vec::with_capacity(len + 1);
+    mem.resize_with(mem.capacity(), usize::default);
+
+    labels
+        .iter()
+        .map(|v| *v as usize)
+        .chain(*labels.iter().max().unwrap() as usize + 1..=len)
+        .zip(
+            labels
+                .iter()
+                .map(|v| *v as usize)
+                .chain(*labels.iter().max().unwrap() as usize + 1..=len)
+                .skip(1),
+        )
+        .for_each(|(a, b)| {
+            mem[a] = b;
+        });
+
+    let mut current_cup = *labels.first().unwrap() as usize;
+
+    mem[labels
+        .iter()
+        .map(|v| *v as usize)
+        .chain(*labels.iter().max().unwrap() as usize + 1..=len)
+        .last()
+        .unwrap()] = current_cup;
+
+    for _ in 0..i {
+        let a = mem[current_cup];
+        let b = mem[a];
+        let c = mem[b];
+
+        mem[current_cup] = mem[c];
+
+        let destination_cup = {
+            let mut destination_cup = (current_cup + len - 1) % len;
+            loop {
+                if destination_cup == 0 {
+                    destination_cup = len;
+                }
+
+                if destination_cup == a || destination_cup == b || destination_cup == c {
+                    if destination_cup == 0 {
+                        destination_cup = len;
+                    } else {
+                        destination_cup -= 1;
+                    }
+                } else {
+                    break destination_cup;
+                }
+            }
+        };
+
+        let end = mem[destination_cup];
+        mem[destination_cup] = a;
+        mem[c] = end;
+
+        current_cup = mem[current_cup];
+    }
+
+    (current_cup, mem)
 }
 
-fn solve_2(_labels: &[u32; 9]) -> String {
-    todo!()
+fn solve_1(labels: &[u32; 9]) -> String {
+    let (_, mem) = solve(&labels[..], 9, 100);
+
+    std::iter::successors(Some(mem[1]), |v| {
+        if mem[*v] == 1 {
+            None
+        } else {
+            Some(mem[*v])
+        }
+    })
+    .map(|v| std::char::from_digit(v as u32, 10).unwrap())
+    .collect::<String>()
+}
+
+fn solve_2(labels: &[u32; 9]) -> u64 {
+    let (_, mem) = solve(&labels[..], 1_000_000, 10_000_000);
+
+    mem[1] as u64 * mem[mem[1]] as u64
 }
 
 pub fn part_1() -> String {
     solve_1(&INPUT)
 }
 
-pub fn part_2() -> String {
+pub fn part_2() -> u64 {
     solve_2(&INPUT)
 }
 
@@ -160,51 +120,21 @@ mod tests {
     }
 
     #[test]
-    fn same_results_example_1_1() {
-        let value = EXAMPLE_1.crap_cups().next().unwrap();
-
-        assert_eq!(value.to_string(), "25467389");
-    }
-
-    #[test]
-    fn same_results_example_1_2() {
-        let value = EXAMPLE_1.crap_cups().nth(1).unwrap();
-
-        assert_eq!(value.to_string(), "54673289");
-    }
-
-    #[test]
-    fn same_results_example_1_3() {
-        let value = EXAMPLE_1.crap_cups().nth(2).unwrap();
-
-        assert_eq!(value.to_string(), "32546789");
-    }
-
-    #[test]
-    fn same_results_example_1_4() {
-        let value = EXAMPLE_1.crap_cups().nth(3).unwrap();
-
-        assert_eq!(value.to_string(), "34672589");
-    }
-
-    #[test]
-    fn same_results_example_1_5() {
-        let value = EXAMPLE_1.crap_cups().nth(4).unwrap();
-
-        assert_eq!(value.to_string(), "32584679");
-    }
-
-    #[test]
-    fn same_results_example_1_10() {
-        assert_eq!(
-            EXAMPLE_1.crap_cups().nth(10).unwrap().to_string(),
-            "92658374"
-        );
-    }
-
-    #[test]
-    fn same_results_example_1_100() {
+    fn same_results_example_1() {
         assert_eq!(solve_1(&EXAMPLE_1), "67384529");
+    }
+
+    #[test]
+    fn same_results_example_2_1() {
+        let (_, mem) = solve(&EXAMPLE_1[..], 1_000_000, 10_000_000);
+
+        assert_eq!(mem[1], 934001);
+        assert_eq!(mem[mem[1]], 159792);
+    }
+
+    #[test]
+    fn same_results_example_2() {
+        assert_eq!(solve_2(&EXAMPLE_1), 149245887792);
     }
 
     #[bench]
