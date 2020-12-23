@@ -15,6 +15,7 @@ trait CrapCups<T> {
 struct CrapCupsIter<T> {
     labels: [T; 9],
     current_cup_index: usize,
+    tmp: [T; 6],
 }
 
 impl CrapCups<u32> for [u32; 9] {
@@ -22,6 +23,7 @@ impl CrapCups<u32> for [u32; 9] {
         CrapCupsIter {
             labels: self.to_owned(),
             current_cup_index: 0,
+            tmp: [0; 6],
         }
     }
 }
@@ -32,7 +34,7 @@ impl Iterator for CrapCupsIter<u32> {
     fn next(&mut self) -> Option<CapCupsValue> {
         let current = self.labels.to_owned();
 
-        let find = |data: [_; 6], value| {
+        let find = |data: &[u32], value| {
             data.iter()
                 .enumerate()
                 .find_map(|(i, v)| if *v == value { Some(i) } else { None })
@@ -45,51 +47,56 @@ impl Iterator for CrapCupsIter<u32> {
             let mut destination_cup = current_cup - 1;
             loop {
                 if destination_cup == 0 {
-                    destination_cup = 9;
+                    destination_cup = current.len() as u32;
                 }
 
-                if (1..4).any(|i| current[(self.current_cup_index + i) % 9] == destination_cup) {
-                    destination_cup = (destination_cup + 9 - 1) % 9;
+                if (1..4).any(|i| {
+                    current[(self.current_cup_index + i) % current.len()] == destination_cup
+                }) {
+                    destination_cup =
+                        (destination_cup + current.len() as u32 - 1) % current.len() as u32;
                 } else {
                     break destination_cup;
                 }
             }
         };
 
-        let mut tmp = [0; 9 - 3];
         let (mut d, mut c) = (0, 0);
-        for i in 0..9 {
-            if (1..4).any(|s| (self.current_cup_index + s) % 9 == i) {
+        for i in 0..current.len() {
+            if (1..4).any(|s| (self.current_cup_index + s) % current.len() == i) {
                 c += 1;
             } else {
-                tmp[d] = current[c];
+                self.tmp[d] = current[c];
                 d += 1;
                 c += 1;
             }
         }
 
-        let destination_cup_index = find(tmp, destination_cup);
-        let current_cup_index = find(tmp, current_cup);
+        let destination_cup_index = find(&self.tmp, destination_cup);
+        let current_cup_index = find(&self.tmp, current_cup);
 
         let (mut d, mut s) = (self.current_cup_index, current_cup_index);
-        for _ in 0..6 {
+        for _ in 0..current.len() - 3 {
             if s == destination_cup_index {
-                self.labels[d] = tmp[s];
-                self.labels[(d + 1) % 9] = current[(self.current_cup_index + 1) % 9];
-                self.labels[(d + 2) % 9] = current[(self.current_cup_index + 2) % 9];
-                self.labels[(d + 3) % 9] = current[(self.current_cup_index + 3) % 9];
+                self.labels[d] = self.tmp[s];
+                self.labels[(d + 1) % current.len()] =
+                    current[(self.current_cup_index + 1) % current.len()];
+                self.labels[(d + 2) % current.len()] =
+                    current[(self.current_cup_index + 2) % current.len()];
+                self.labels[(d + 3) % current.len()] =
+                    current[(self.current_cup_index + 3) % current.len()];
 
-                d = (d + 4) % 9;
-                s = (s + 1) % 6;
+                d = (d + 4) % current.len();
+                s = (s + 1) % (current.len() - 3);
             } else {
-                self.labels[d] = tmp[s];
+                self.labels[d] = self.tmp[s];
 
-                d = (d + 1) % 9;
-                s = (s + 1) % 6;
+                d = (d + 1) % current.len();
+                s = (s + 1) % (current.len() - 3);
             }
         }
 
-        self.current_cup_index = (self.current_cup_index + 1) % 9;
+        self.current_cup_index = (self.current_cup_index + 1) % current.len();
 
         Some(CapCupsValue(current))
     }
