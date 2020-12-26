@@ -6,6 +6,12 @@ extern crate lazy_static;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
+mod tiles;
+use tiles::*;
+
+mod combination2b;
+use combination2b::*;
+
 lazy_static! {
     static ref INPUT: Tiles = include_str!("../input")
         .trim()
@@ -13,193 +19,15 @@ lazy_static! {
         .expect("invalid input");
 }
 
-#[derive(Clone)]
-struct Tiles(HashMap<u128, Tile>);
-
-impl std::ops::Deref for Tiles {
-    type Target = HashMap<u128, Tile>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl std::str::FromStr for Tiles {
-    type Err = String;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        Ok(Self(
-            input
-                .split("\n\n")
-                .map(|tile| {
-                    let mut lines = tile.split('\n');
-
-                    lines
-                        .next()
-                        .ok_or_else(|| "id not found".to_string())
-                        .and_then(|line| {
-                            line[5..5 + 4].parse().map_err(|_| "invalid id".to_string())
-                        })
-                        .and_then(|id| Tile::new(lines).map(|tile| (id, tile)))
-                })
-                .collect::<Result<HashMap<_, _>, _>>()?,
-        ))
-    }
-}
-
-impl std::fmt::Debug for Tiles {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for (id, tile) in &self.0 {
-            fmt.write_fmt(format_args!("Tile: {}\n", id))?;
-            fmt.write_fmt(format_args!("{:?}\n", tile))?;
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Clone)]
-struct Tile {
-    #[allow(dead_code)]
-    image: Vec<Vec<TileCell>>,
-    top: (u32, u32),
-    right: (u32, u32),
-    bottom: (u32, u32),
-    left: (u32, u32),
-    set: HashSet<u32>,
-}
-
-impl Tile {
-    fn new(lines: std::str::Split<char>) -> Result<Self, String> {
-        use TileCell::*;
-
-        let image = lines
-            .map(|line| {
-                line.chars()
-                    .map(|c| match c {
-                        '.' => Ok(Empty),
-                        '#' => Ok(On),
-                        _ => Err(format!("invalid cell tile: {}", c)),
-                    })
-                    .collect::<Result<Vec<_>, _>>()
-            })
-            .collect::<Result<Vec<_>, _>>()?;
-
-        if image.is_empty() {
-            return Err("invalid tile: width zero".to_string());
-        }
-        if image.len() != image[0].len() {
-            return Err(format!(
-                "invalid tile: width {} != height {}",
-                image.len(),
-                image[0].len()
-            ));
-        }
-
-        let top = Tile::calc_sign(&image[0]);
-        let right = Tile::calc_sign(image.iter().map(|row| row.last().unwrap()));
-        let left = Tile::calc_sign(image.iter().map(|row| &row[0]));
-        let bottom = Tile::calc_sign(image.last().unwrap());
-
-        let mut set = HashSet::new();
-        let mut insert = |(a, b)| {
-            set.insert(a);
-            set.insert(b);
-        };
-
-        insert(top);
-        insert(right);
-        insert(left);
-        insert(bottom);
-
-        Ok(Self {
-            image,
-            top,
-            right,
-            bottom,
-            left,
-            set,
-        })
-    }
-
-    fn calc_sign<'a, I: IntoIterator<Item = &'a TileCell>>(v: I) -> (u32, u32) {
-        use TileCell::*;
-
-        let (mut res, mut m, mut count) = (0, 1, 0);
-        for c in v {
-            if let On = c {
-                res += m;
-            }
-            m <<= 1;
-            count += 1;
-        }
-
-        (res, res.reverse_bits() >> (32 - count))
-    }
-}
-
-impl std::fmt::Debug for Tile {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        fmt.write_fmt(format_args!("top: {:?}\n", self.top))?;
-        fmt.write_fmt(format_args!("right: {:?}\n", self.right))?;
-        fmt.write_fmt(format_args!("bottom: {:?}\n", self.bottom))?;
-        fmt.write_fmt(format_args!("left: {:?}\n", self.left))?;
-
-        Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-enum TileCell {
-    Empty,
-    On,
-}
-
-struct Combination2<T> {
-    data: Vec<T>,
-    i: usize,
-    j: usize,
-}
-
-impl<T: Sized + Clone> Iterator for Combination2<T> {
-    type Item = (T, T);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let len = self.data.len();
-        if len < 2 || self.i > len - 2 {
-            None
-        } else {
-            self.j += 1;
-            if self.j >= len {
-                self.i += 1;
-                self.j = self.i + 1;
-            }
-            if self.i > len - 2 {
-                None
-            } else {
-                Some((self.data[self.i].clone(), self.data[self.j].clone()))
-            }
-        }
-    }
-}
-
-trait Combination2B: IntoIterator
-where
-    Self: Sized,
-    Self::Item: Clone,
-{
-    fn combination2(self) -> Combination2<Self::Item> {
-        let data: Vec<Self::Item> = self.into_iter().collect();
-
-        Combination2 { data, i: 0, j: 0 }
-    }
-}
-
-impl<T> Combination2B for T
-where
-    T: IntoIterator,
-    T::Item: Clone,
-{
+macro_rules! check {
+    ($msg:expr, $set:expr, $tile:expr, $i:expr) => {
+        assert!(
+            $set.contains(&$tile.edge_vec[$i].0) && $set.contains(&$tile.edge_vec[$i].1),
+            "{}\n{:?}",
+            $msg,
+            $tile
+        );
+    };
 }
 
 fn solve_1(input: &Tiles) -> u128 {
@@ -207,7 +35,10 @@ fn solve_1(input: &Tiles) -> u128 {
         .iter()
         .combination2()
         .filter_map(|((a_id, a_tile), (b_id, b_tile))| {
-            let i = a_tile.set.intersection(&b_tile.set).collect::<HashSet<_>>();
+            let i = a_tile
+                .edge_set
+                .intersection(&b_tile.edge_set)
+                .collect::<HashSet<_>>();
             if i.is_empty() {
                 None
             } else {
@@ -244,7 +75,10 @@ fn solve_2(input: &Tiles) -> usize {
             .iter()
             .combination2()
             .filter_map(|((a_id, a_tile), (b_id, b_tile))| {
-                let i = a_tile.set.intersection(&b_tile.set).collect::<HashSet<_>>();
+                let i = a_tile
+                    .edge_set
+                    .intersection(&b_tile.edge_set)
+                    .collect::<HashSet<_>>();
                 if i.is_empty() {
                     None
                 } else {
@@ -309,34 +143,119 @@ fn solve_2(input: &Tiles) -> usize {
         assert_eq!(found.len(), input.len());
     }
 
-    let input = (*input).clone();
-    {
-        let seed_tile = &input[&map[0].unwrap()];
-        let right_tile = &input[&map[1].unwrap()];
-        let right_1_tile = &input[&map[2].unwrap()];
-        let bottom_tile = &input[&map[edge as usize].unwrap()];
+    let mut input = (0..edge)
+        .map(|y| {
+            (0..edge)
+                .map(|x| input[&map[(x + y * edge) as usize].unwrap()].to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
 
-        let right_set = seed_tile
-            .set
-            .intersection(&right_tile.set)
-            .collect::<HashSet<_>>();
-        let right_1_set = right_tile
-            .set
-            .intersection(&right_1_tile.set)
-            .collect::<HashSet<_>>();
-        let bottom_set = seed_tile
-            .set
-            .intersection(&bottom_tile.set)
-            .collect::<HashSet<_>>();
+    // fix rows
+    for (y, row) in input.iter_mut().enumerate() {
+        let mut x = 0;
+        let mut current = &mut row[..];
+        while current.len() > 1 {
+            let (a, r) = current.split_first_mut().unwrap();
 
-        println!("seed\n{:?}", seed_tile);
-        println!("right\n{:?}", right_tile);
-        println!("right 1\n{:?}", right_1_tile);
-        println!("bottom\n{:?}", bottom_tile);
+            let set = a
+                .edge_set
+                .intersection(&r[0].edge_set)
+                .copied()
+                .collect::<HashSet<_>>();
 
-        println!("right set: {:?}", right_set);
-        println!("right 1 set: {:?}", right_1_set);
-        println!("bottom set: {:?}", bottom_set);
+            {
+                // rotate a, if possible
+                let p = a.find(&set).unwrap();
+                if p != RIGHT_INDEX {
+                    if x == 0 {
+                        let angle = RIGHT_INDEX as isize - p as isize;
+                        a.rotate(angle);
+                        check!("a", set, a, RIGHT_INDEX);
+                    } else {
+                        panic!("cannot rotate ({}, {})!", x, y);
+                    }
+                }
+            }
+
+            {
+                // rotate b
+                let p = r[0].find(&set).unwrap();
+                if p != LEFT_INDEX {
+                    let angle = LEFT_INDEX as isize - p as isize;
+                    r[0].rotate(angle);
+                    check!("b", set, r[0], LEFT_INDEX);
+                }
+            }
+
+            if a.edge_vec[RIGHT_INDEX] != r[0].edge_vec[LEFT_INDEX] {
+                r[0].flip_h();
+            }
+
+            assert_eq!(
+                a.edge_vec[RIGHT_INDEX], r[0].edge_vec[LEFT_INDEX],
+                "\ntile a\n{:?}\ntile b\n{:?}",
+                a, r[0]
+            );
+
+            x += 1;
+            current = r;
+        }
+    }
+
+    // fix columns
+    for x in 0..input.len() {
+        let mut y = 0;
+        let mut current = &mut input[..];
+        while current.len() > 1 {
+            let (a, r) = current.split_first_mut().unwrap();
+
+            let set = a[x]
+                .edge_set
+                .intersection(&r[0][x].edge_set)
+                .copied()
+                .collect::<HashSet<_>>();
+
+            {
+                // flip a, if possible
+                let p = a[x].find(&set).unwrap();
+                if p != BOTTOM_INDEX {
+                    if y == 0 {
+                        a[x].flip_v();
+                    } else {
+                        panic!("cannot flip ({}, {})!", x, y);
+                    }
+                }
+            }
+
+            {
+                // flip b
+                let p = r[0][x].find(&set).unwrap();
+                if p != TOP_INDEX {
+                    r[0][x].flip_v();
+                }
+            }
+
+            assert_eq!(
+                a[x].edge_vec[BOTTOM_INDEX], r[0][x].edge_vec[TOP_INDEX],
+                "\n({}, {})\ntile a\n{:?}\ntile b\n{:?}",
+                x, y, a[x], r[0][x]
+            );
+
+            y += 1;
+            current = r;
+        }
+    }
+
+    // check
+    for (y, row) in input.iter().enumerate() {
+        for (x, p) in row.windows(2).enumerate() {
+            assert_eq!(
+                p[0].edge_vec[RIGHT_INDEX], p[1].edge_vec[LEFT_INDEX],
+                "\n({}, {})\ntile a\n{:?}\ntile b\n{:?}",
+                x, y, p[0], p[1]
+            );
+        }
     }
 
     todo!()
@@ -378,6 +297,7 @@ mod tests {
     }
 
     #[bench]
+    #[ignore]
     fn bench_part_2(b: &mut Bencher) {
         b.iter(part_2);
     }
