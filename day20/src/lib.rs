@@ -19,17 +19,17 @@ macro_rules! debug {
 
 #[cfg(not(debug_assertions))]
 macro_rules! debug {
-    ($($e:expr),*) => { }
+    ($($e:expr),*) => {};
 }
 
 lazy_static! {
-    static ref INPUT: Tiles = include_str!("../input")
+    static ref INPUT: Tiles<u32> = include_str!("../input")
         .trim()
         .parse()
         .expect("invalid input");
 }
 
-fn solve_1(input: &Tiles) -> u128 {
+fn solve_1(input: &Tiles<u32>) -> u128 {
     input
         .iter()
         .combination2()
@@ -54,12 +54,12 @@ fn solve_1(input: &Tiles) -> u128 {
         .product()
 }
 
-fn solve_2(input: &Tiles) -> usize {
+fn solve_2(input: &Tiles<u32>) -> usize {
     let size = input.len();
     let edge = (size as f32).sqrt() as i128;
 
     let mut map: Vec<Option<u128>> = vec![None; size];
-    let mut tiles: HashMap<u128, Tile> = HashMap::new();
+    let mut tiles: HashMap<u128, Tile<u32, TileOptionalU32>> = HashMap::new();
 
     let get = |map: &Vec<Option<u128>>, (x, y): (i128, i128)| {
         if x >= 0 && x < edge && y >= 0 && y < edge {
@@ -99,7 +99,7 @@ fn solve_2(input: &Tiles) -> usize {
             });
 
         let set = |map: &mut Vec<Option<u128>>,
-                   tiles: &mut HashMap<u128, Tile>,
+                   tiles: &mut HashMap<u128, Tile<u32, TileOptionalU32>>,
                    found: &mut HashSet<u128>,
                    (x, y): (i128, i128),
                    v,
@@ -376,7 +376,7 @@ mod tests {
     use test::Bencher;
 
     lazy_static! {
-        static ref INPUT: Tiles = include_str!("../input-example")
+        static ref INPUT: Tiles<u32> = include_str!("../input-example")
             .trim()
             .parse()
             .expect("invalid input");

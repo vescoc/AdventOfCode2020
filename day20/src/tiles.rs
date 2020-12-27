@@ -16,17 +16,17 @@ lazy_static! {
 }
 
 #[derive(Clone)]
-pub struct Tiles(HashMap<u128, Tile>);
+pub struct Tiles<T, O: TileOptional<T> = TileOptionalU32>(HashMap<u128, Tile<T, O>>);
 
-impl std::ops::Deref for Tiles {
-    type Target = HashMap<u128, Tile>;
+impl<T, O: TileOptional<T>> std::ops::Deref for Tiles<T, O> {
+    type Target = HashMap<u128, Tile<T, O>>;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl std::str::FromStr for Tiles {
+impl<T, O: TileOptional<T>> std::str::FromStr for Tiles<T, O> {
     type Err = String;
 
     fn from_str(input: &str) -> Result<Self, Self::Err> {
@@ -49,7 +49,7 @@ impl std::str::FromStr for Tiles {
     }
 }
 
-impl std::fmt::Debug for Tiles {
+impl<T: std::fmt::Debug, O: TileOptional<T>> std::fmt::Debug for Tiles<T, O> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         for (id, tile) in &self.0 {
             fmt.write_fmt(format_args!("Tile: {}\n", id))?;
@@ -60,16 +60,80 @@ impl std::fmt::Debug for Tiles {
     }
 }
 
-#[derive(Clone, PartialEq)]
-pub struct Tile {
-    image: Vec<Vec<TileCell>>,
-    pub edge_set: HashSet<u32>,
-    pub edge_vec: Vec<(u32, u32)>,
+pub trait TileOptional<T> {
+    fn calc_signs(_image: &[Vec<TileCell>]) -> (HashSet<T>, Vec<(T, T)>);
 }
 
-type CalcSigns = (HashSet<u32>, Vec<(u32, u32)>);
+pub struct TileOptionalU32;
 
-impl Tile {
+impl TileOptionalU32 {
+    fn calc_sign<'a, I: IntoIterator<Item = &'a TileCell>>(v: I) -> (u32, u32) {
+        use TileCell::*;
+
+        let (mut res, mut m, mut count) = (0, 1, 0);
+        for c in v {
+            if let On = c {
+                res += m;
+            }
+            m <<= 1;
+            count += 1;
+        }
+
+        (res, res.reverse_bits() >> (32 - count))
+    }
+}
+
+pub struct TileOptionalNop;
+
+impl TileOptional<()> for TileOptionalNop {
+    fn calc_signs(_image: &[Vec<TileCell>]) -> (HashSet<()>, Vec<((), ())>) {
+        (HashSet::new(), Vec::new())
+    }
+}
+
+impl TileOptional<u32> for TileOptionalU32 {
+    fn calc_signs(image: &[Vec<TileCell>]) -> (HashSet<u32>, Vec<(u32, u32)>) {
+        let top = Self::calc_sign(&image[0]);
+        let right = Self::calc_sign(image.iter().map(|row| row.last().unwrap()));
+        let bottom = Self::calc_sign(image.last().unwrap().iter().rev());
+        let left = Self::calc_sign(image.iter().rev().map(|row| &row[0]));
+
+        let mut set = HashSet::new();
+        let mut vec = Vec::new();
+        let mut insert = |(a, b)| {
+            set.insert(a);
+            set.insert(b);
+            vec.push((a, b));
+        };
+
+        insert(top);
+        insert(right);
+        insert(bottom);
+        insert(left);
+
+        (set, vec)
+    }
+}
+
+pub struct Tile<T, O: TileOptional<T> = TileOptionalU32> {
+    image: Vec<Vec<TileCell>>,
+    pub edge_set: HashSet<T>,
+    pub edge_vec: Vec<(T, T)>,
+    _t: std::marker::PhantomData<O>,
+}
+
+impl<T: Clone, O: TileOptional<T>> Clone for Tile<T, O> {
+    fn clone(&self) -> Self {
+        Self {
+            image: self.image.clone(),
+            edge_set: self.edge_set.clone(),
+            edge_vec: self.edge_vec.clone(),
+            _t: self._t,
+        }
+    }
+}
+
+impl<T, O: TileOptional<T>> Tile<T, O> {
     fn new<'a, I: Iterator<Item = &'a str>>(lines: I) -> Result<Self, String> {
         use TileCell::*;
 
@@ -96,60 +160,14 @@ impl Tile {
             ));
         }
 
-        let (edge_set, edge_vec) = Tile::calc_signs(&image);
+        let (edge_set, edge_vec) = O::calc_signs(&image);
 
         Ok(Self {
             image,
             edge_set,
             edge_vec,
+            _t: std::marker::PhantomData,
         })
-    }
-
-    pub fn find(&self, set: &HashSet<u32>) -> Option<usize> {
-        for (i, vec) in self.edge_vec.iter().enumerate() {
-            if set.contains(&vec.0) && set.contains(&vec.1) {
-                return Some(i);
-            }
-        }
-
-        None
-    }
-
-    fn calc_signs(image: &[Vec<TileCell>]) -> CalcSigns {
-        let top = Tile::calc_sign(&image[0]);
-        let right = Tile::calc_sign(image.iter().map(|row| row.last().unwrap()));
-        let bottom = Tile::calc_sign(image.last().unwrap().iter().rev());
-        let left = Tile::calc_sign(image.iter().rev().map(|row| &row[0]));
-
-        let mut set = HashSet::new();
-        let mut vec = Vec::new();
-        let mut insert = |(a, b)| {
-            set.insert(a);
-            set.insert(b);
-            vec.push((a, b));
-        };
-
-        insert(top);
-        insert(right);
-        insert(bottom);
-        insert(left);
-
-        (set, vec)
-    }
-
-    fn calc_sign<'a, I: IntoIterator<Item = &'a TileCell>>(v: I) -> (u32, u32) {
-        use TileCell::*;
-
-        let (mut res, mut m, mut count) = (0, 1, 0);
-        for c in v {
-            if let On = c {
-                res += m;
-            }
-            m <<= 1;
-            count += 1;
-        }
-
-        (res, res.reverse_bits() >> (32 - count))
     }
 
     pub fn rotate(&mut self, angle: isize) -> &mut Self {
@@ -183,7 +201,7 @@ impl Tile {
             })
             .collect::<Vec<_>>();
 
-        let (edge_set, edge_vec) = Tile::calc_signs(&image);
+        let (edge_set, edge_vec) = O::calc_signs(&image);
 
         self.image = image;
         self.edge_set = edge_set;
@@ -197,7 +215,7 @@ impl Tile {
             row.reverse();
         }
 
-        let (edge_set, edge_vec) = Tile::calc_signs(&self.image);
+        let (edge_set, edge_vec) = O::calc_signs(&self.image);
 
         self.edge_set = edge_set;
         self.edge_vec = edge_vec;
@@ -208,7 +226,7 @@ impl Tile {
     pub fn flip_v(&mut self) -> &mut Self {
         self.image.reverse();
 
-        let (edge_set, edge_vec) = Tile::calc_signs(&self.image);
+        let (edge_set, edge_vec) = O::calc_signs(&self.image);
 
         self.edge_set = edge_set;
         self.edge_vec = edge_vec;
@@ -236,12 +254,24 @@ impl Tile {
     }
 }
 
-impl std::fmt::Debug for Tile {
+impl<T: Eq + std::hash::Hash, O: TileOptional<T>> Tile<T, O> {
+    pub fn find(&self, set: &HashSet<T>) -> Option<usize> {
+        for (i, vec) in self.edge_vec.iter().enumerate() {
+            if set.contains(&vec.0) && set.contains(&vec.1) {
+                return Some(i);
+            }
+        }
+
+        None
+    }
+}
+
+impl<T: std::fmt::Debug, O: TileOptional<T>> std::fmt::Debug for Tile<T, O> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TileCell::*;
 
-        for (i, s) in vec!["top", "right", "bottom", "left"].iter().enumerate() {
-            fmt.write_fmt(format_args!("{}: {:?}\n", s, self.edge_vec[i]))?;
+        for (s, v) in vec!["top", "right", "bottom", "left"].iter().zip(self.edge_vec.iter()) {
+            fmt.write_fmt(format_args!("{}: {:?}\n", s, v))?;
         }
 
         for row in &self.image {
@@ -259,7 +289,7 @@ impl std::fmt::Debug for Tile {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Hash)]
-enum TileCell {
+pub enum TileCell {
     Empty,
     On,
 }
@@ -269,9 +299,9 @@ mod tests {
     use super::*;
 
     lazy_static! {
-        static ref INPUT: Tile = include_str!("../input-example")
+        static ref INPUT: Tile<u32, TileOptionalU32> = include_str!("../input-example")
             .trim()
-            .parse::<Tiles>()
+            .parse::<Tiles<u32>>()
             .expect("invalid input")
             .0
             .into_iter()
@@ -282,7 +312,7 @@ mod tests {
 
     #[test]
     fn test_rotate_3_90() {
-        let mut tile = Tile::new(
+        let mut tile: Tile<u32> = Tile::new(
             r"#.#
 .#.
 ..#"
@@ -306,7 +336,7 @@ mod tests {
 .#.
 ..#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
 
         tile.rotate(0);
 
@@ -319,8 +349,7 @@ mod tests {
 .#.
 ..#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
-
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
         tile.rotate(2);
 
         assert_eq!(tile.get_image(), image);
@@ -328,7 +357,7 @@ mod tests {
 
     #[test]
     fn test_rotate_2_90() {
-        let mut tile = Tile::new(
+        let mut tile: Tile<u32> = Tile::new(
             r"#.
 .#"
             .lines(),
@@ -349,7 +378,7 @@ mod tests {
         let image = r"#.
 .#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
 
         tile.rotate(0);
 
@@ -361,7 +390,7 @@ mod tests {
         let image = r"#.
 .#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
 
         tile.rotate(2);
 
@@ -373,7 +402,7 @@ mod tests {
         let image = r"##
 .#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
 
         tile.flip_h();
 
@@ -389,7 +418,7 @@ mod tests {
         let image = r"##
 .#";
 
-        let mut tile = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
 
         tile.flip_v();
 
@@ -402,7 +431,7 @@ mod tests {
 
     #[test]
     fn test_flip_v() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.flip_v();
 
@@ -417,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_flip_h() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.flip_h();
 
@@ -454,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_rotate_0() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.rotate(0);
 
@@ -469,7 +498,7 @@ mod tests {
 
     #[test]
     fn test_rotate_1() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.rotate(1);
 
@@ -484,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_rotate_2() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.rotate(2);
 
@@ -499,7 +528,7 @@ mod tests {
 
     #[test]
     fn test_rotate_3() {
-        let mut tile = INPUT.to_owned();
+        let mut tile: Tile<u32> = INPUT.to_owned();
 
         tile.rotate(3);
 
