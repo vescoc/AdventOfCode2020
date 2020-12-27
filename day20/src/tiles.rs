@@ -107,7 +107,7 @@ impl Tile {
 
     pub fn find(&self, set: &HashSet<u32>) -> Option<usize> {
         for (i, vec) in self.edge_vec.iter().enumerate() {
-            if set.contains(&vec.0) || set.contains(&vec.1) {
+            if set.contains(&vec.0) && set.contains(&vec.1) {
                 return Some(i);
             }
         }
@@ -239,14 +239,17 @@ impl Tile {
 impl std::fmt::Debug for Tile {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TileCell::*;
-        
+
         for (i, s) in vec!["top", "right", "bottom", "left"].iter().enumerate() {
             fmt.write_fmt(format_args!("{}: {:?}\n", s, self.edge_vec[i]))?;
         }
-        
+
         for row in &self.image {
             for t in row {
-                fmt.write_str(match t { On => "#", Empty => "." })?;
+                fmt.write_str(match t {
+                    On => "#",
+                    Empty => ".",
+                })?;
             }
             fmt.write_str("\n")?;
         }

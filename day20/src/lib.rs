@@ -12,22 +12,21 @@ use tiles::*;
 mod combination2b;
 use combination2b::*;
 
+#[cfg(debug_assertions)]
+macro_rules! debug {
+    ($($e:expr),*) => { println!($($e),*); }
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! debug {
+    ($($e:expr),*) => { }
+}
+
 lazy_static! {
     static ref INPUT: Tiles = include_str!("../input")
         .trim()
         .parse()
         .expect("invalid input");
-}
-
-macro_rules! check {
-    ($msg:expr, $set:expr, $tile:expr, $i:expr) => {
-        assert!(
-            $set.contains(&$tile.edge_vec[$i].0) && $set.contains(&$tile.edge_vec[$i].1),
-            "{}\n{:?}",
-            $msg,
-            $tile
-        );
-    };
 }
 
 fn solve_1(input: &Tiles) -> u128 {
@@ -60,8 +59,9 @@ fn solve_2(input: &Tiles) -> usize {
     let edge = (size as f32).sqrt() as i128;
 
     let mut map: Vec<Option<u128>> = vec![None; size];
+    let mut tiles: HashMap<u128, Tile> = HashMap::new();
 
-    let get = |map: &Vec<Option<u128>>, (x, y)| {
+    let get = |map: &Vec<Option<u128>>, (x, y): (i128, i128)| {
         if x >= 0 && x < edge && y >= 0 && y < edge {
             map[(x + y * edge) as usize]
         } else {
@@ -69,8 +69,15 @@ fn solve_2(input: &Tiles) -> usize {
         }
     };
 
+    // populate tiles
     {
-        // populate map
+        // working cell
+        let mut queue = VecDeque::new();
+
+        // found tiles
+        let mut found: HashSet<u128> = HashSet::new();
+
+        // neighbors
         let neighbors = input
             .iter()
             .combination2()
@@ -86,178 +93,272 @@ fn solve_2(input: &Tiles) -> usize {
                 }
             })
             .fold(HashMap::new(), |mut map, (a_id, b_id)| {
-                map.entry(a_id).or_insert_with(HashSet::new).insert(b_id);
-                map.entry(b_id).or_insert_with(HashSet::new).insert(a_id);
+                map.entry(a_id).or_insert_with(HashSet::new).insert(*b_id);
+                map.entry(b_id).or_insert_with(HashSet::new).insert(*a_id);
                 map
             });
 
-        let seed = neighbors
-            .iter()
-            .filter_map(|(id, v)| if v.len() == 2 { Some(id) } else { None })
-            .next()
-            .unwrap();
-
-        map[0] = Some(**seed);
-
-        let set = |map: &mut Vec<Option<u128>>, (x, y): (i128, i128), v| {
+        let set = |map: &mut Vec<Option<u128>>,
+                   tiles: &mut HashMap<u128, Tile>,
+                   found: &mut HashSet<u128>,
+                   (x, y): (i128, i128),
+                   v,
+                   tile| {
             map[(x + y * edge) as usize] = Some(v);
+            tiles.insert(v, tile);
+            found.insert(v);
         };
 
-        let mut queue = VecDeque::new();
-        queue.push_back((0, 1));
-        queue.push_back((1, 0));
+        // find and fix [0, 0], [0, 1] and [1, 0]
+        {
+            let seed = neighbors
+                .iter()
+                .filter_map(|(id, v)| if v.len() == 2 { Some(*id) } else { None })
+                .next()
+                .unwrap();
 
-        let mut found = HashSet::new();
-        found.insert(*seed);
+            let mut seed_tile = input[seed].to_owned();
+
+            let mut n = neighbors[seed].iter();
+
+            let right = n.next().unwrap();
+            let bottom = n.next().unwrap();
+
+            assert!(n.next().is_none());
+
+            let mut right_tile = input[right].to_owned();
+            let mut bottom_tile = input[bottom].to_owned();
+
+            debug!("seed tile: {}\n{:?}", seed, seed_tile);
+            debug!("right tile: {}\n{:?}", right, right_tile);
+            debug!("bottom tile: {}\n{:?}", bottom, bottom_tile);
+
+            // fix sides
+            {
+                let right_edge = seed_tile
+                    .edge_set
+                    .intersection(&right_tile.edge_set)
+                    .copied()
+                    .collect();
+                let bottom_edge = seed_tile
+                    .edge_set
+                    .intersection(&bottom_tile.edge_set)
+                    .copied()
+                    .collect();
+
+                debug!("right edge: {:?}", right_edge);
+                debug!("bottom edge: {:?}", bottom_edge);
+                debug!();
+
+                let right_rotation = right_tile.find(&right_edge).unwrap();
+                if right_rotation != LEFT_INDEX {
+                    let angle = right_rotation as isize - LEFT_INDEX as isize;
+                    right_tile.rotate(angle);
+                    debug!("right tile rotate {}", angle);
+                    debug!("{:?}", right_tile);
+                }
+
+                let bottom_rotation = bottom_tile.find(&bottom_edge).unwrap();
+                if bottom_rotation != TOP_INDEX {
+                    let angle = bottom_rotation as isize - TOP_INDEX as isize;
+                    bottom_tile.rotate(angle);
+                    debug!("bottom tile rotate {}", angle);
+                    debug!("{:?}", bottom_tile);
+                }
+
+                let seed_rotation = seed_tile.find(&right_edge).unwrap();
+                if seed_rotation != RIGHT_INDEX {
+                    let angle = seed_rotation as isize - RIGHT_INDEX as isize;
+                    seed_tile.rotate(angle);
+                    debug!("seed tile rotate {}", angle);
+                    debug!("{:?}", seed_tile);
+                }
+
+                let seed_flip = seed_tile.find(&bottom_edge).unwrap();
+                if seed_flip != BOTTOM_INDEX {
+                    assert_eq!(seed_flip, TOP_INDEX);
+                    seed_tile.flip_v();
+                    debug!("seed tile flip v");
+                    debug!("{:?}", seed_tile);
+                }
+
+                if seed_tile.edge_vec[RIGHT_INDEX].0 != right_tile.edge_vec[LEFT_INDEX].1 {
+                    right_tile.flip_v();
+                    debug!("right tile flip v");
+                    debug!("{:?}", right_tile);
+                }
+
+                if seed_tile.edge_vec[BOTTOM_INDEX].0 != bottom_tile.edge_vec[TOP_INDEX].1 {
+                    bottom_tile.flip_h();
+                    debug!("bottom tile flip h");
+                    debug!("{:?}", bottom_tile);
+                }
+
+                debug!();
+
+                debug!("post seed tile\n{:?}", seed_tile);
+                debug!("post right tile\n{:?}", right_tile);
+                debug!("post bottom tile\n{:?}", bottom_tile);
+
+                assert_eq!(
+                    seed_tile.edge_vec[RIGHT_INDEX].0, right_tile.edge_vec[LEFT_INDEX].1,
+                    "seed vs right"
+                );
+                assert_eq!(
+                    seed_tile.edge_vec[BOTTOM_INDEX].0, bottom_tile.edge_vec[TOP_INDEX].1,
+                    "seed vs bottom"
+                );
+            }
+
+            set(&mut map, &mut tiles, &mut found, (0, 0), *seed, seed_tile);
+            set(&mut map, &mut tiles, &mut found, (1, 0), *right, right_tile);
+            set(
+                &mut map,
+                &mut tiles,
+                &mut found,
+                (0, 1),
+                *bottom,
+                bottom_tile,
+            );
+
+            queue.push_back((1, 1));
+            queue.push_back((0, 2));
+            queue.push_back((2, 0));
+        }
 
         while let Some((x, y)) = queue.pop_front() {
-            if get(&map, (x, y)).is_some() {
-                continue;
-            }
-
-            let n = match (get(&map, (x, y - 1)), get(&map, (x - 1, y))) {
-                (Some(a_id), Some(b_id)) => neighbors[&a_id]
-                    .intersection(&neighbors[&b_id])
+            let (left_id, top_id) = (get(&map, (x - 1, y)), get(&map, (x, y - 1)));
+            let n = match (left_id, top_id) {
+                (Some(id_a), Some(id_b)) => neighbors[&id_a]
+                    .intersection(&neighbors[&id_b])
                     .copied()
-                    .collect(),
-                (None, Some(id)) => neighbors[&id].clone(),
-                (Some(id), None) => neighbors[&id].clone(),
+                    .collect::<HashSet<_>>()
+                    .difference(&found)
+                    .copied()
+                    .collect::<HashSet<_>>(),
+                (None, Some(id)) => neighbors[&id]
+                    .difference(&found)
+                    .copied()
+                    .collect::<HashSet<_>>(),
+                (Some(id), None) => neighbors[&id]
+                    .difference(&found)
+                    .copied()
+                    .collect::<HashSet<_>>(),
                 (None, None) => unreachable!(),
-            }
-            .difference(&found)
-            .copied()
-            .collect::<HashSet<_>>();
+            };
 
-            let current = *n.iter().next().unwrap();
-            found.insert(current);
-            set(&mut map, (x, y), *current);
+            assert_eq!(n.len(), 1, "({}, {}): {:?}", x, y, n);
 
-            if x + 1 < edge {
-                queue.push_back((x + 1, y));
-            }
-            if y + 1 < edge {
-                queue.push_back((x, y + 1));
-            }
-        }
+            let id = n.iter().next().unwrap();
+            let mut tile = input[id].to_owned();
+            debug!("\nworking on {}\n{:?}", id, tile);
 
-        assert_eq!(found.len(), input.len());
-    }
+            // TODO: I think this algo is bad
+            // I must rotate & flip tile on one shot if left and top edge are both of them defined
 
-    let mut input = (0..edge)
-        .map(|y| {
-            (0..edge)
-                .map(|x| input[&map[(x + y * edge) as usize].unwrap()].to_owned())
-                .collect::<Vec<_>>()
-        })
-        .collect::<Vec<_>>();
+            let top_edge = if let Some(top_id) = top_id {
+                let top_tile = &tiles[&top_id];
+                let top_edge = top_tile
+                    .edge_set
+                    .intersection(&tile.edge_set)
+                    .copied()
+                    .collect::<HashSet<_>>();
+                assert_eq!(top_edge.len(), 2, "top_edge invalid");
 
-    // fix rows
-    for (y, row) in input.iter_mut().enumerate() {
-        let mut x = 0;
-        let mut current = &mut row[..];
-        while current.len() > 1 {
-            let (a, r) = current.split_first_mut().unwrap();
+                debug!("top tile: {}\nedge: {:?}\n{:?}", top_id, top_edge, top_tile);
+                assert_eq!(
+                    top_tile.find(&top_edge).unwrap(),
+                    BOTTOM_INDEX,
+                    "({}, {}) top_tile invalid position",
+                    x,
+                    y
+                );
 
-            let set = a
-                .edge_set
-                .intersection(&r[0].edge_set)
-                .copied()
-                .collect::<HashSet<_>>();
+                let top_rotation = tile.find(&top_edge).unwrap();
+                if top_rotation != TOP_INDEX {
+                    let angle = top_rotation as isize - TOP_INDEX as isize;
+                    tile.rotate(angle);
+                    debug!("tile rotate {}", angle);
+                }
 
-            {
-                // rotate a, if possible
-                let p = a.find(&set).unwrap();
-                if p != RIGHT_INDEX {
-                    if x == 0 {
-                        let angle = RIGHT_INDEX as isize - p as isize;
-                        a.rotate(angle);
-                        check!("a", set, a, RIGHT_INDEX);
+                Some(top_tile.edge_vec[BOTTOM_INDEX].to_owned())
+            } else {
+                None
+            };
+
+            let left_edge = if let Some(left_id) = left_id {
+                let left_tile = &tiles[&left_id];
+                let left_edge = left_tile
+                    .edge_set
+                    .intersection(&tile.edge_set)
+                    .copied()
+                    .collect::<HashSet<_>>();
+                assert_eq!(left_edge.len(), 2, "left_edge invalid");
+
+                debug!("left tile: {}\nedge: {:?}\n{:?}", left_id, edge, left_tile);
+                assert_eq!(
+                    left_tile.find(&left_edge).unwrap(),
+                    RIGHT_INDEX,
+                    "({}, {}) left_tile invalid position",
+                    x,
+                    y
+                );
+
+                let left_rotation = tile.find(&left_edge).unwrap();
+                if left_rotation != LEFT_INDEX {
+                    if top_edge.is_some() {
+                        assert_eq!(
+                            left_rotation, RIGHT_INDEX,
+                            "({}, {}), cannot rotate {}",
+                            x, y, left_rotation
+                        );
+                        tile.flip_h();
+                        debug!("tile flip h");
                     } else {
-                        panic!("cannot rotate ({}, {})!", x, y);
+                        let angle = left_rotation as isize - LEFT_INDEX as isize;
+                        tile.rotate(angle);
+                        debug!("tile rotate {}", angle);
                     }
                 }
-            }
 
-            {
-                // rotate b
-                let p = r[0].find(&set).unwrap();
-                if p != LEFT_INDEX {
-                    let angle = LEFT_INDEX as isize - p as isize;
-                    r[0].rotate(angle);
-                    check!("b", set, r[0], LEFT_INDEX);
+                Some(left_tile.edge_vec[RIGHT_INDEX].to_owned())
+            } else {
+                None
+            };
+
+            if let Some((a, _)) = left_edge {
+                if tile.edge_vec[LEFT_INDEX].1 != a {
+                    tile.flip_v();
+                    debug!("tile flip v");
+                }
+            }
+            if let Some((a, _)) = top_edge {
+                if tile.edge_vec[TOP_INDEX].1 != a {
+                    tile.flip_h();
+                    debug!("tile flip h");
                 }
             }
 
-            if a.edge_vec[RIGHT_INDEX] != r[0].edge_vec[LEFT_INDEX] {
-                r[0].flip_h();
+            if let Some((a, _)) = left_edge {
+                assert_eq!(
+                    a, tile.edge_vec[LEFT_INDEX].1,
+                    "({}, {}) invalid left position",
+                    x, y
+                );
+            }
+            if let Some((a, _)) = top_edge {
+                assert_eq!(
+                    a, tile.edge_vec[TOP_INDEX].1,
+                    "({}, {}) invalid top position",
+                    x, y
+                );
             }
 
-            assert_eq!(
-                a.edge_vec[RIGHT_INDEX], r[0].edge_vec[LEFT_INDEX],
-                "\ntile a\n{:?}\ntile b\n{:?}",
-                a, r[0]
-            );
-
-            x += 1;
-            current = r;
+            set(&mut map, &mut tiles, &mut found, (x, y), *id, tile);
         }
     }
 
-    // fix columns
-    for x in 0..input.len() {
-        let mut y = 0;
-        let mut current = &mut input[..];
-        while current.len() > 1 {
-            let (a, r) = current.split_first_mut().unwrap();
-
-            let set = a[x]
-                .edge_set
-                .intersection(&r[0][x].edge_set)
-                .copied()
-                .collect::<HashSet<_>>();
-
-            {
-                // flip a, if possible
-                let p = a[x].find(&set).unwrap();
-                if p != BOTTOM_INDEX {
-                    if y == 0 {
-                        a[x].flip_v();
-                    } else {
-                        panic!("cannot flip ({}, {})!", x, y);
-                    }
-                }
-            }
-
-            {
-                // flip b
-                let p = r[0][x].find(&set).unwrap();
-                if p != TOP_INDEX {
-                    r[0][x].flip_v();
-                }
-            }
-
-            assert_eq!(
-                a[x].edge_vec[BOTTOM_INDEX], r[0][x].edge_vec[TOP_INDEX],
-                "\n({}, {})\ntile a\n{:?}\ntile b\n{:?}",
-                x, y, a[x], r[0][x]
-            );
-
-            y += 1;
-            current = r;
-        }
-    }
-
-    // check
-    for (y, row) in input.iter().enumerate() {
-        for (x, p) in row.windows(2).enumerate() {
-            assert_eq!(
-                p[0].edge_vec[RIGHT_INDEX], p[1].edge_vec[LEFT_INDEX],
-                "\n({}, {})\ntile a\n{:?}\ntile b\n{:?}",
-                x, y, p[0], p[1]
-            );
-        }
-    }
-
+    // now map & tiles are a good image, but unknown rotation / flip
     todo!()
 }
 
@@ -297,7 +398,6 @@ mod tests {
     }
 
     #[bench]
-    #[ignore]
     fn bench_part_2(b: &mut Bencher) {
         b.iter(part_2);
     }
