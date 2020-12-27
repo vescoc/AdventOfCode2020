@@ -434,18 +434,19 @@ fn solve_2(input: &Tiles<u32>) -> u32 {
     print_mask!(MONSTER_PATTERN.iter());
 
     let flips: Vec<fn(&mut Tile<_, _>)> = vec![flip_none, flip_h, flip_v];
-    for f in flips {
+    for r in 0..4 {
         let mut tile = tile.to_owned();
+        tile.rotate(r);
 
-        f(&mut tile);
-        for i in 0..4 {
-            tile.rotate(i);
-        }
+        for f in &flips {
+            let mut tile = tile.to_owned();
+            f(&mut tile);
 
-        let monster_roughness =
-            check_pattern(&tile.get_mask(), edge * h, &MONSTER_PATTERN, *MONSTER_WIDTH);
-        if monster_roughness != 0 {
-            return total_water_roughness - monster_roughness;
+            let monster_roughness =
+                check_pattern(&tile.get_mask(), edge * h, &MONSTER_PATTERN, *MONSTER_WIDTH);
+            if monster_roughness != 0 {
+                return total_water_roughness - monster_roughness;
+            }
         }
     }
 
