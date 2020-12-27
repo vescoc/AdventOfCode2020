@@ -134,7 +134,7 @@ impl<T: Clone, O: TileOptional<T>> Clone for Tile<T, O> {
 }
 
 impl<T, O: TileOptional<T>> Tile<T, O> {
-    fn new_from_lines<'a, I: Iterator<Item = &'a str>>(lines: I) -> Result<Self, String> {
+    pub fn new_from_lines<'a, I: Iterator<Item = &'a str>>(lines: I) -> Result<Self, String> {
         use TileCell::*;
 
         let image = lines
@@ -183,6 +183,10 @@ impl<T, O: TileOptional<T>> Tile<T, O> {
 
     pub fn rotate(&mut self, angle: isize) -> &mut Self {
         let angle = ((angle + 4) % 4) as usize;
+        if angle == 0 {
+            return self;
+        }
+
         let edge = self.image.len();
         let middle = edge as isize / 2;
         let (dx, dy) = if edge % 2 == 0 {

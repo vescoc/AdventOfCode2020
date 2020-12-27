@@ -17,7 +17,7 @@ macro_rules! debug {
     ($($e:expr),*) => { println!($($e),*); }
 }
 
-//#[cfg(debug_assertions)]
+#[cfg(debug_assertions)]
 macro_rules! print_mask {
     ($e:expr) => {
         println!(stringify!($e));
@@ -79,7 +79,7 @@ fn solve_1(input: &Tiles<u32>) -> u128 {
         .product()
 }
 
-fn solve_2(input: &Tiles<u32>) -> u32 {
+fn assemble_tile(input: &Tiles<u32>) -> (Tile<(), TileOptionalNop>, usize, usize, usize) {
     let size = input.len();
     let edge = (size as f32).sqrt() as i128;
 
@@ -136,15 +136,15 @@ fn solve_2(input: &Tiles<u32>) -> u32 {
 
         // find and fix [0, 0], [0, 1] and [1, 0]
         {
-            let seed = neighbors
+            let seed = *neighbors
                 .iter()
                 .filter_map(|(id, v)| if v.len() == 2 { Some(*id) } else { None })
                 .next()
                 .unwrap();
 
-            let mut seed_tile = input[seed].to_owned();
+            let mut seed_tile = input[&seed].to_owned();
 
-            let mut n = neighbors[seed].iter();
+            let mut n = neighbors[&seed].iter();
 
             let right = n.next().unwrap();
             let bottom = n.next().unwrap();
@@ -235,7 +235,7 @@ fn solve_2(input: &Tiles<u32>) -> u32 {
                 );
             }
 
-            set(&mut map, &mut tiles, &mut found, (0, 0), *seed, seed_tile);
+            set(&mut map, &mut tiles, &mut found, (0, 0), seed, seed_tile);
             set(&mut map, &mut tiles, &mut found, (1, 0), *right, right_tile);
             set(
                 &mut map,
@@ -395,23 +395,25 @@ fn solve_2(input: &Tiles<u32>) -> u32 {
     }
 
     // now map & tiles are a good image, but unknown rotation / flip
+    // removing borders...
 
     let edge = edge as usize;
-    let h = input.values().next().unwrap().image.len();
-    let w = input.values().next().unwrap().image[0].len();
+    let h = input.values().next().unwrap().image.len() - 2;
+    let w = input.values().next().unwrap().image[0].len() - 2;
     debug!("making mega tile: ({}, {})", edge * w, edge * h);
 
     let mut image = Vec::new();
     image.resize_with(edge * h, Vec::new);
 
+    let mut row = 0;
     for y in 0..edge {
-        let row = y * h;
         for x in 0..edge {
             let tile = &tiles[&map[x + y * edge].unwrap()];
-            for (i, v) in tile.image.iter().enumerate() {
-                image[row + i].append(&mut v.to_owned());
+            for (i, v) in tile.image[1..tile.image.len() - 1].iter().enumerate() {
+                image[row + i].append(&mut v[1..v.len() - 1].to_owned());
             }
         }
+        row += h;
     }
 
     assert_eq!(image.len(), edge * h, "invalid rows");
@@ -420,16 +422,46 @@ fn solve_2(input: &Tiles<u32>) -> u32 {
     let tile: Tile<(), TileOptionalNop> = Tile::new_from_image(image);
     debug!("mega tile\n{:?}", tile);
 
+    (tile, edge, h, w)
+}
+
+fn solve_2(input: &Tiles<u32>) -> u32 {
+    let (tile, edge, h, _w) = assemble_tile(input);
+
     let total_water_roughness = tile.get_mask().iter().map(|v| v.count_ones()).sum::<u32>();
 
     print_mask!(tile.get_mask());
     print_mask!(MONSTER_PATTERN.iter());
 
-    let monster_roughness =
-        check_pattern(&tile.get_mask(), edge * h, &MONSTER_PATTERN, *MONSTER_WIDTH);
-    assert!(monster_roughness != 0);
+    let flips: Vec<fn(&mut Tile<_, _>)> = vec![flip_none, flip_h, flip_v];
+    for f in flips {
+        let mut tile = tile.to_owned();
 
-    total_water_roughness - monster_roughness
+        f(&mut tile);
+        for i in 0..4 {
+            tile.rotate(i);
+        }
+
+        let monster_roughness =
+            check_pattern(&tile.get_mask(), edge * h, &MONSTER_PATTERN, *MONSTER_WIDTH);
+        if monster_roughness != 0 {
+            return total_water_roughness - monster_roughness;
+        }
+    }
+
+    unreachable!()
+}
+
+fn flip_none<T, O: TileOptional<T>>(_tile: &mut Tile<T, O>) {
+    // none
+}
+
+fn flip_h<T, O: TileOptional<T>>(tile: &mut Tile<T, O>) {
+    tile.flip_h();
+}
+
+fn flip_v<T, O: TileOptional<T>>(tile: &mut Tile<T, O>) {
+    tile.flip_v();
 }
 
 fn check_pattern(
@@ -444,10 +476,10 @@ fn check_pattern(
 
     let mut count = 0;
     let mut row = 0;
-    while row < image_height - pattern_height {
+    while row < image_height - pattern_height + 1 {
         let mut partial_count = 0;
         let mut s = 0;
-        while s < image_width - pattern_width {
+        while s < image_width - pattern_width + 1 {
             if image[row..row + pattern_height]
                 .iter()
                 .enumerate()
@@ -455,17 +487,13 @@ fn check_pattern(
             {
                 debug!("hit at ({}, {})", s, row);
                 partial_count += 1;
-                s += pattern_width;
-            } else {
-                s += 1;
             }
+            s += 1;
         }
         if partial_count > 0 {
-            row += pattern_height;
             count += partial_count;
-        } else {
-            row += 1;
         }
+        row += 1;
     }
 
     if count != 0 {
@@ -493,6 +521,9 @@ mod tests {
             .trim()
             .parse()
             .expect("invalid input");
+        static ref INPUT_RESULT: Tile<(), TileOptionalNop> =
+            Tile::new_from_lines(include_str!("../input-example-result").trim().lines())
+                .expect("invalid input");
     }
 
     #[test]
@@ -503,6 +534,50 @@ mod tests {
     #[test]
     fn same_results_part_2() {
         assert_eq!(solve_2(&INPUT), 273);
+    }
+
+    #[test]
+    fn same_results_part_2_partial() {
+        let tile = assemble_tile(&INPUT).0;
+
+        debug!("assembled tile\n{:?}", tile);
+        debug!("target tile\n{:?}", *INPUT_RESULT);
+
+        assert_eq!(tile.image.len(), INPUT_RESULT.image.len(), "invalid height");
+        assert_eq!(
+            tile.image[0].len(),
+            INPUT_RESULT.image[0].len(),
+            "invalid height"
+        );
+
+        let flips: Vec<fn(&mut Tile<_, _>)> = vec![flip_none, flip_h, flip_v];
+        for f in flips {
+            let mut tile = tile.to_owned();
+
+            for i in 0..4 {
+                f(&mut tile);
+                tile.rotate(i);
+
+                if tile.image == INPUT_RESULT.image {
+                    return;
+                }
+            }
+        }
+
+        unreachable!();
+    }
+
+    #[test]
+    fn test_check_pattern() {
+        assert_eq!(
+            check_pattern(
+                &MONSTER_PATTERN,
+                *MONSTER_WIDTH,
+                &MONSTER_PATTERN,
+                *MONSTER_WIDTH
+            ),
+            15
+        );
     }
 
     #[bench]
