@@ -17,9 +17,24 @@ macro_rules! debug {
     ($($e:expr),*) => { println!($($e),*); }
 }
 
+//#[cfg(debug_assertions)]
+macro_rules! print_mask {
+    ($e:expr) => {
+        println!(stringify!($e));
+        for i in $e {
+            println!("{:0128b}", i);
+        }
+    };
+}
+
 #[cfg(not(debug_assertions))]
 macro_rules! debug {
     ($($e:expr),*) => {};
+}
+
+#[cfg(not(debug_assertions))]
+macro_rules! print_mask {
+    ($e:expr) => {};
 }
 
 lazy_static! {
@@ -27,6 +42,16 @@ lazy_static! {
         .trim()
         .parse()
         .expect("invalid input");
+    static ref MONSTER: &'static str = r"                  # 
+#    ##    ##    ###
+ #  #  #  #  #  #   ";
+    static ref MONSTER_PATTERN: Vec<u128> = MONSTER
+        .lines()
+        .map(|line| line
+            .chars()
+            .fold(0, |v, c| if c == '#' { (v << 1) | 1 } else { v << 1 }))
+        .collect();
+    static ref MONSTER_WIDTH: usize = MONSTER.lines().next().unwrap().len();
 }
 
 fn solve_1(input: &Tiles<u32>) -> u128 {
@@ -54,7 +79,7 @@ fn solve_1(input: &Tiles<u32>) -> u128 {
         .product()
 }
 
-fn solve_2(input: &Tiles<u32>) -> usize {
+fn solve_2(input: &Tiles<u32>) -> u32 {
     let size = input.len();
     let edge = (size as f32).sqrt() as i128;
 
@@ -227,6 +252,10 @@ fn solve_2(input: &Tiles<u32>) -> usize {
         }
 
         while let Some((x, y)) = queue.pop_front() {
+            if get(&map, (x, y)).is_some() {
+                continue;
+            }
+
             let (left_id, top_id) = (get(&map, (x - 1, y)), get(&map, (x, y - 1)));
             let n = match (left_id, top_id) {
                 (Some(id_a), Some(id_b)) => neighbors[&id_a]
@@ -355,18 +384,102 @@ fn solve_2(input: &Tiles<u32>) -> usize {
             }
 
             set(&mut map, &mut tiles, &mut found, (x, y), *id, tile);
+
+            if x + 1 < edge {
+                queue.push_back((x + 1, y));
+            }
+            if y + 1 < edge {
+                queue.push_back((x, y + 1));
+            }
         }
     }
 
     // now map & tiles are a good image, but unknown rotation / flip
-    todo!()
+
+    let edge = edge as usize;
+    let h = input.values().next().unwrap().image.len();
+    let w = input.values().next().unwrap().image[0].len();
+    debug!("making mega tile: ({}, {})", edge * w, edge * h);
+
+    let mut image = Vec::new();
+    image.resize_with(edge * h, Vec::new);
+
+    for y in 0..edge {
+        let row = y * h;
+        for x in 0..edge {
+            let tile = &tiles[&map[x + y * edge].unwrap()];
+            for (i, v) in tile.image.iter().enumerate() {
+                image[row + i].append(&mut v.to_owned());
+            }
+        }
+    }
+
+    assert_eq!(image.len(), edge * h, "invalid rows");
+    assert_eq!(image[0].len(), edge * w, "invalid cols");
+
+    let tile: Tile<(), TileOptionalNop> = Tile::new_from_image(image);
+    debug!("mega tile\n{:?}", tile);
+
+    let total_water_roughness = tile.get_mask().iter().map(|v| v.count_ones()).sum::<u32>();
+
+    print_mask!(tile.get_mask());
+    print_mask!(MONSTER_PATTERN.iter());
+
+    let monster_roughness =
+        check_pattern(&tile.get_mask(), edge * h, &MONSTER_PATTERN, *MONSTER_WIDTH);
+    assert!(monster_roughness != 0);
+
+    total_water_roughness - monster_roughness
+}
+
+fn check_pattern(
+    image: &[u128],
+    image_width: usize,
+    pattern: &[u128],
+    pattern_width: usize,
+) -> u32 {
+    let pattern_ones = pattern.iter().map(|v| v.count_ones()).collect::<Vec<_>>();
+    let image_height = image.len();
+    let pattern_height = pattern.len();
+
+    let mut count = 0;
+    let mut row = 0;
+    while row < image_height - pattern_height {
+        let mut partial_count = 0;
+        let mut s = 0;
+        while s < image_width - pattern_width {
+            if image[row..row + pattern_height]
+                .iter()
+                .enumerate()
+                .all(|(i, row)| (row & (pattern[i] << s)).count_ones() == pattern_ones[i])
+            {
+                debug!("hit at ({}, {})", s, row);
+                partial_count += 1;
+                s += pattern_width;
+            } else {
+                s += 1;
+            }
+        }
+        if partial_count > 0 {
+            row += pattern_height;
+            count += partial_count;
+        } else {
+            row += 1;
+        }
+    }
+
+    if count != 0 {
+        count * pattern_ones.into_iter().sum::<u32>()
+    } else {
+        0
+    }
 }
 
 pub fn part_1() -> u128 {
     solve_1(&INPUT)
 }
 
-pub fn part_2() -> usize {
+pub fn part_2() -> u32 {
     solve_2(&INPUT)
 }
 

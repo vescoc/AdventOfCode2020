@@ -42,7 +42,7 @@ impl<T, O: TileOptional<T>> std::str::FromStr for Tiles<T, O> {
                         .and_then(|line| {
                             line[5..5 + 4].parse().map_err(|_| "invalid id".to_string())
                         })
-                        .and_then(|id| Tile::new(lines).map(|tile| (id, tile)))
+                        .and_then(|id| Tile::new_from_lines(lines).map(|tile| (id, tile)))
                 })
                 .collect::<Result<HashMap<_, _>, _>>()?,
         ))
@@ -116,7 +116,7 @@ impl TileOptional<u32> for TileOptionalU32 {
 }
 
 pub struct Tile<T, O: TileOptional<T> = TileOptionalU32> {
-    image: Vec<Vec<TileCell>>,
+    pub image: Vec<Vec<TileCell>>,
     pub edge_set: HashSet<T>,
     pub edge_vec: Vec<(T, T)>,
     _t: std::marker::PhantomData<O>,
@@ -134,7 +134,7 @@ impl<T: Clone, O: TileOptional<T>> Clone for Tile<T, O> {
 }
 
 impl<T, O: TileOptional<T>> Tile<T, O> {
-    fn new<'a, I: Iterator<Item = &'a str>>(lines: I) -> Result<Self, String> {
+    fn new_from_lines<'a, I: Iterator<Item = &'a str>>(lines: I) -> Result<Self, String> {
         use TileCell::*;
 
         let image = lines
@@ -168,6 +168,17 @@ impl<T, O: TileOptional<T>> Tile<T, O> {
             edge_vec,
             _t: std::marker::PhantomData,
         })
+    }
+
+    pub fn new_from_image(image: Vec<Vec<TileCell>>) -> Self {
+        let (edge_set, edge_vec) = O::calc_signs(&image);
+
+        Self {
+            image,
+            edge_set,
+            edge_vec,
+            _t: std::marker::PhantomData,
+        }
     }
 
     pub fn rotate(&mut self, angle: isize) -> &mut Self {
@@ -252,6 +263,18 @@ impl<T, O: TileOptional<T>> Tile<T, O> {
             .collect::<Vec<_>>();
         r.join("\n")
     }
+
+    pub fn get_mask(&self) -> Vec<u128> {
+        self.image
+            .iter()
+            .map(|row| {
+                row.iter().fold(0, |v, c| match c {
+                    TileCell::On => (v << 1) | 1,
+                    TileCell::Empty => v << 1,
+                })
+            })
+            .collect()
+    }
 }
 
 impl<T: Eq + std::hash::Hash, O: TileOptional<T>> Tile<T, O> {
@@ -270,7 +293,10 @@ impl<T: std::fmt::Debug, O: TileOptional<T>> std::fmt::Debug for Tile<T, O> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
         use TileCell::*;
 
-        for (s, v) in vec!["top", "right", "bottom", "left"].iter().zip(self.edge_vec.iter()) {
+        for (s, v) in vec!["top", "right", "bottom", "left"]
+            .iter()
+            .zip(self.edge_vec.iter())
+        {
             fmt.write_fmt(format_args!("{}: {:?}\n", s, v))?;
         }
 
@@ -299,20 +325,13 @@ mod tests {
     use super::*;
 
     lazy_static! {
-        static ref INPUT: Tile<u32, TileOptionalU32> = include_str!("../input-example")
-            .trim()
-            .parse::<Tiles<u32>>()
-            .expect("invalid input")
-            .0
-            .into_iter()
-            .next()
-            .unwrap()
-            .1;
+        static ref INPUT: &'static Tile<u32, TileOptionalU32> =
+            crate::INPUT.values().next().unwrap();
     }
 
     #[test]
     fn test_rotate_3_90() {
-        let mut tile: Tile<u32> = Tile::new(
+        let mut tile: Tile<u32> = Tile::new_from_lines(
             r"#.#
 .#.
 ..#"
@@ -336,7 +355,7 @@ mod tests {
 .#.
 ..#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
 
         tile.rotate(0);
 
@@ -349,7 +368,7 @@ mod tests {
 .#.
 ..#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
         tile.rotate(2);
 
         assert_eq!(tile.get_image(), image);
@@ -357,7 +376,7 @@ mod tests {
 
     #[test]
     fn test_rotate_2_90() {
-        let mut tile: Tile<u32> = Tile::new(
+        let mut tile: Tile<u32> = Tile::new_from_lines(
             r"#.
 .#"
             .lines(),
@@ -378,7 +397,7 @@ mod tests {
         let image = r"#.
 .#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
 
         tile.rotate(0);
 
@@ -390,7 +409,7 @@ mod tests {
         let image = r"#.
 .#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
 
         tile.rotate(2);
 
@@ -402,7 +421,7 @@ mod tests {
         let image = r"##
 .#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
 
         tile.flip_h();
 
@@ -418,7 +437,7 @@ mod tests {
         let image = r"##
 .#";
 
-        let mut tile: Tile<u32> = Tile::new(image.lines()).expect("invalid input");
+        let mut tile: Tile<u32> = Tile::new_from_lines(image.lines()).expect("invalid input");
 
         tile.flip_v();
 
